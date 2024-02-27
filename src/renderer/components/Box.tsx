@@ -2,19 +2,16 @@ import React, { PropsWithChildren } from "react";
 import { AppInfo } from "../../common/interface";
 import { pathToName } from "../../common/util";
 import { DragEventHandler, useCallback, FC, ReactNode } from "react";
-import { DroppableProvided } from "react-beautiful-dnd";
 import { Icon } from "./Icon";
 
 const { getAppIcon, openFileDialog } = window.electron!;
 
-type BoxProps = {
-  boxId: string;
-  header: string | ReactNode;
-  updateHotKeyMap: Function;
-  provided?: DroppableProvided;
-};
-
-export const Box: FC<PropsWithChildren<BoxProps>> = (props) => {
+export const Box: FC<
+  PropsWithChildren<{
+    header: ReactNode;
+    updateHotKeyMap: Function;
+  }>
+> = ({ header, updateHotKeyMap, children }) => {
   const handleAppDrop: DragEventHandler = useCallback(
     async (ev) => {
       ev.preventDefault();
@@ -27,9 +24,9 @@ export const Box: FC<PropsWithChildren<BoxProps>> = (props) => {
         path: file.path,
         icon: appIcon,
       };
-      props.updateHotKeyMap(appData);
+      updateHotKeyMap(appData);
     },
-    [getAppIcon],
+    [getAppIcon]
   );
 
   const handleOpenFileDialog = useCallback(async () => {
@@ -46,27 +43,24 @@ export const Box: FC<PropsWithChildren<BoxProps>> = (props) => {
         path: appPath,
         icon: appIcon,
       };
-      props.updateHotKeyMap(appData);
+      updateHotKeyMap(appData);
     } else {
       return;
     }
-  }, [openFileDialog, pathToName, getAppIcon, props.updateHotKeyMap]);
+  }, [openFileDialog, pathToName, getAppIcon, updateHotKeyMap]);
 
   return (
-    <div
-      className="box"
-      onDrop={handleAppDrop}
-      {...props.provided?.droppableProps}
-    >
+    <div className="box" onDrop={handleAppDrop}>
       <header className="box__header">
-        {props.header}
+        {header}
         <Icon
           type="plus"
           className="add-button"
           onClick={handleOpenFileDialog}
         />
       </header>
-      {props.children}
+
+      {children}
     </div>
   );
 };

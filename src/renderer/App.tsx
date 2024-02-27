@@ -1,62 +1,48 @@
-import React from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+  type UniqueIdentifier,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { create } from "mutative";
+import React, { FC, useEffect, useState } from "react";
+import { AppInfo, HotKeyMap } from "../common/interface";
 import { Box } from "./components/Box";
 import { Card } from "./components/Card";
-import { AppInfo, HotKeyMap } from "../common/interface";
-import { useEffect, useState, FC } from "react";
-import {
-  DragDropContext,
-  DragDropContextProps,
-  Draggable,
-  Droppable,
-} from "react-beautiful-dnd";
-import update from "immutability-helper";
+import { CardList } from "./components/CardList";
 
 const { getHotKeyMap, setHotKeyMap } = window.electron!;
 
 export const App: FC = () => {
-  const [hotKeyData, setHotKeyData] = useState<HotKeyMap | null>(null);
-
-  const onDragEnd: DragDropContextProps["onDragEnd"] = async (result) => {
-    const { source, destination } = result;
-    if (!(destination && hotKeyData)) {
-      return;
-    }
-    const { droppableId: srcKey, index: srcIndex } = source;
-    const { droppableId: destKey, index: destIndex } = destination;
-    const srcItem = hotKeyData[srcKey][srcIndex];
-    let nData: HotKeyMap;
-    if (srcKey === destKey) {
-      nData = update(hotKeyData, {
-        [srcKey]: {
-          $splice: [
-            [srcIndex, 1],
-            [destIndex, 0, srcItem],
-          ],
-        },
-      });
-    } else {
-      nData = update(hotKeyData, {
-        [srcKey]: { $splice: [[srcIndex, 1]] },
-        [destKey]: { $splice: [[destIndex, 0, srcItem]] },
-      });
-    }
-    setHotKeyData(nData);
-    setHotKeyMap(nData);
-  };
+  const [hotKeyData, setHotKeyData] = useState<HotKeyMap>({});
 
   const updateHotKeyMap = (boxKey: string) => (newApp: AppInfo) => {
-    const nData = { ...hotKeyData };
-    nData[boxKey].push(newApp);
-    setHotKeyData(nData);
-    setHotKeyMap(nData);
+    const data = create(hotKeyData, (draft) => {
+      draft[boxKey].push(newApp);
+    });
+    setHotKeyData(data);
+    setHotKeyMap(data);
   };
 
   const removeHotKeyMap = (boxKey: string, cardIndex: number) => {
-    const nData = { ...hotKeyData };
-    nData[boxKey].splice(cardIndex, 1);
-    setHotKeyData(nData);
-    setHotKeyMap(nData);
+    const data = create(hotKeyData, (draft) => {
+      draft[boxKey].splice(cardIndex, 1);
+    });
+    setHotKeyData(data);
+    setHotKeyMap(data);
   };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     getHotKeyMap().then((res) => {
@@ -66,56 +52,70 @@ export const App: FC = () => {
     });
   }, []);
 
+  const [draggingItem, setDraggingItem] = useState<{
+    cardId: UniqueIdentifier;
+    boxId: string;
+  } | null>(null);
+
   if (!hotKeyData) {
     return <div>Loading...</div>;
   }
 
   // View
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={(event) => {
+        console.log(event);
+        setDraggingItem({
+          cardId: event.active.id,
+          boxId: event.active.data.current?.sortable.containerId,
+        });
+      }}
+    >
       <div className="launcher-section">
-        {Object.entries(hotKeyData).map(([boxKey, appList]) => (
-          <Droppable key={boxKey} droppableId={boxKey}>
-            {(provided) => (
-              <Box
-                key={`box-${boxKey}`}
-                boxId={`box-${boxKey}`}
-                header={`Ctrl + ${boxKey}`}
-                updateHotKeyMap={updateHotKeyMap(boxKey)}
-                provided={provided}
-              >
-                <div
-                  ref={provided.innerRef}
-                  className="card-list"
-                  {...provided.droppableProps}
-                >
-                  {appList.map((app, cardIndex) => (
-                    <Draggable
-                      key={app.path}
-                      draggableId={app.path}
-                      index={cardIndex}
-                    >
-                      {(provided) => (
-                        <Card
-                          key={`card-${app.name}`}
-                          cardId={`card-${app.name}`}
-                          icon={app.icon || ""}
-                          name={app.name}
-                          removeHotKeyMap={() =>
-                            removeHotKeyMap(boxKey, cardIndex)
-                          }
-                          provided={provided}
-                        />
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              </Box>
-            )}
-          </Droppable>
-        ))}
+        {Object.entries(hotKeyData).map(([boxId, appList]) => {
+          const cardIds = appList.map(({ path }) => path);
+          return (
+            <Box
+              key={boxId}
+              header={`Ctrl + ${boxId}`}
+              updateHotKeyMap={updateHotKeyMap(boxId)}
+            >
+              <CardList boxId={boxId} cardIds={cardIds}>
+                {appList.map((app, cardIndex) => (
+                  <Card
+                    key={app.path}
+                    cardId={app.path}
+                    icon={app.icon ?? ""}
+                    name={app.name}
+                    removeHotKeyMap={() => removeHotKeyMap(boxId, cardIndex)}
+                  />
+                ))}
+              </CardList>
+            </Box>
+          );
+        })}
+        <DragOverlay>
+          {draggingItem
+            ? (() => {
+                const { boxId, cardId } = draggingItem;
+                const app = hotKeyData[boxId].find(
+                  (app) => app.path === cardId
+                );
+                return (
+                  <Card
+                    cardId={draggingItem.cardId}
+                    icon={app?.icon ?? ""}
+                    name={app?.name ?? ""}
+                    removeHotKeyMap={() => {}}
+                  />
+                );
+              })()
+            : null}
+        </DragOverlay>
       </div>
-    </DragDropContext>
+    </DndContext>
   );
 };

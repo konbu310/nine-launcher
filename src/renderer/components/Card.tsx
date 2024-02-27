@@ -1,24 +1,41 @@
 import React, { FC } from "react";
-import { DraggableProvided } from "react-beautiful-dnd";
 import { Icon } from "./Icon";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { UniqueIdentifier } from "@dnd-kit/core";
 
 export const Card: FC<{
-  cardId: string;
+  cardId: UniqueIdentifier;
   icon: string;
   name: string;
   removeHotKeyMap: VoidFunction;
-  provided: DraggableProvided;
-}> = ({ cardId, icon, name, removeHotKeyMap, provided }) => {
+}> = ({ cardId, icon, name, removeHotKeyMap }) => {
+  const {
+    setNodeRef,
+    transform,
+    transition,
+    attributes,
+    listeners,
+    isDragging,
+  } = useSortable({
+    id: cardId,
+  });
+
   const iconSrc = icon.startsWith("data:")
     ? icon
     : `data:image/png;base64,${icon}`;
+
   return (
     <div
-      ref={provided.innerRef}
+      ref={setNodeRef}
       className="card__container"
-      id={cardId}
-      {...provided.draggableProps}
-      {...provided.dragHandleProps}
+      style={{
+        transition,
+        transform: CSS.Translate.toString(transform),
+        visibility: isDragging ? "hidden" : "visible",
+      }}
+      {...attributes}
+      {...listeners}
     >
       <div className="card">
         <img className="card__icon" src={iconSrc} alt="application icon" />
